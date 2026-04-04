@@ -498,22 +498,11 @@ export default function CopilotoLanding() {
 
   const handleSubmit = () => {
     if (!email.includes("@")) return;
-    // Send to Mailchimp via hidden iframe to avoid page redirect
-    const iframe = document.createElement("iframe");
-    iframe.name = "mc-hidden-" + Date.now();
-    iframe.style.display = "none";
-    document.body.appendChild(iframe);
-    const form = document.createElement("form");
-    form.action = "https://us20.list-manage.com/subscribe/post?u=8f0b59d21d6f47bb53ef064b6&id=f7833f3aa25";
-    form.method = "POST";
-    form.target = iframe.name;
-    const emailInput = document.createElement("input");
-    emailInput.name = "EMAIL";
-    emailInput.value = email;
-    form.appendChild(emailInput);
-    document.body.appendChild(form);
-    form.submit();
-    setTimeout(() => { try { document.body.removeChild(form); document.body.removeChild(iframe); } catch(e){} }, 5000);
+    const script = document.createElement("script");
+    script.src = "https://us20.list-manage.com/subscribe/post-json?u=8f0b59d21d6f47bb53ef064b6&id=7833f3aa25&EMAIL=" + encodeURIComponent(email) + "&c=__mc_cb";
+    window.__mc_cb = function() {};
+    document.body.appendChild(script);
+    setTimeout(() => { try { document.body.removeChild(script); } catch(e){} }, 3000);
     setSubmitted(true);
   };
 
