@@ -504,7 +504,7 @@ export default function CopilotoLanding() {
     iframe.style.display = "none";
     document.body.appendChild(iframe);
     const form = document.createElement("form");
-    form.action = "https://us20.list-manage.com/subscribe/post?u=8f0b59d21d6f47bb53ef064b6&id=f67ba9a138";
+    form.action = "https://us20.list-manage.com/subscribe/post?u=8f0b59d21d6f47bb53ef064b6&id=f7833f3aa25";
     form.method = "POST";
     form.target = iframe.name;
     const emailInput = document.createElement("input");
