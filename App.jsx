@@ -498,11 +498,13 @@ export default function CopilotoLanding() {
 
   const handleSubmit = () => {
     if (!email.includes("@")) return;
-    const script = document.createElement("script");
-    script.src = "https://us20.list-manage.com/subscribe/post-json?u=8f0b59d21d6f47bb53ef064b6&id=7833f3aa25&EMAIL=" + encodeURIComponent(email) + "&c=__mc_cb";
-    window.__mc_cb = function() {};
-    document.body.appendChild(script);
-    setTimeout(() => { try { document.body.removeChild(script); } catch(e){} }, 3000);
+    const data = new FormData();
+    data.append("EMAIL", email);
+    fetch("https://us20.list-manage.com/subscribe/post?u=8f0b59d21d6f47bb53ef064b6&id=7833f3aa25", {
+      method: "POST",
+      body: data,
+      mode: "no-cors"
+    });
     setSubmitted(true);
   };
 
