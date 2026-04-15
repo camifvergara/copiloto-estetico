@@ -1,4 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useReducer } from "react";
+import { questions, getVisibleQuestions, BLOCKS } from "./lib/questions";
+import { computeAllScores } from "./lib/scoring";
+import { evaluateFlags, RED_FLAG_MESSAGES, SOFT_FLAG_MESSAGES } from "./lib/redFlags";
 
 // ─── Intersection Observer Hook ─────────────────────────────
 function useInView(options = {}) {
@@ -73,37 +76,56 @@ const IconArrowDown = () => (
   </svg>
 );
 
+
 // ═══════════════════════════════════════════════════════════════
-// ─── DEMO MODAL COMPONENT ─────────────────────────────────────
+// ─── WIZARD OF OZ DEMO MODAL (v4 — 20 preguntas) ─────────────
 // ═══════════════════════════════════════════════════════════════
 function DemoModal({ isOpen, onClose }) {
-  const [step, setStep] = useState(0);
-  const [profile, setProfile] = useState({ age: "", gender: "", previous: "" });
-  const [procedure, setProcedure] = useState({ type: "", motivation: "", timeframe: "" });
+  const STAGES = { WELCOME: 'welcome', QUESTIONS: 'questions', ANALYSIS: 'analysis', RESULTS: 'results', REDFLAG: 'redflag' };
+  const [stage, setStage] = useState(STAGES.WELCOME);
+  const [answers, setAnswers] = useState({});
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [redFlagType, setRedFlagType] = useState(null);
+  const [scores, setScores] = useState(null);
+  const [consent, setConsent] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisPhase, setAnalysisPhase] = useState(0);
 
   const analysisMessages = [
     "Evaluando tu perfil de riesgo...",
-    "Detectando señales de alerta...",
-    "Cruzando con evidencia clínica real...",
-    "Analizando si tu motivación es sólida...",
-    "Generando tu diagnóstico de decisión...",
+    "Calibrando con datos del sector...",
+    "Analizando alineación tratamiento-motivación...",
+    "Evaluando tolerancia a resultados ambiguos...",
+    "Generando tu análisis personalizado...",
   ];
 
-  // Reset when opening
+  const visibleQs = getVisibleQuestions(answers);
+  const currentQ = visibleQs[currentIdx];
+
   useEffect(() => {
-    if (isOpen) { setStep(0); setProfile({ age: "", gender: "", previous: "" }); setProcedure({ type: "", motivation: "", timeframe: "" }); setAnalysisProgress(0); setAnalysisPhase(0); }
+    if (isOpen) {
+      setStage(STAGES.WELCOME);
+      setAnswers({});
+      setCurrentIdx(0);
+      setScores(null);
+      setRedFlagType(null);
+      setConsent(false);
+      setAnalysisProgress(0);
+      setAnalysisPhase(0);
+    }
   }, [isOpen]);
 
-  // Analysis animation
   useEffect(() => {
-    if (step !== 3) return;
+    if (stage !== STAGES.ANALYSIS) return;
     setAnalysisProgress(0);
     setAnalysisPhase(0);
     const interval = setInterval(() => {
       setAnalysisProgress(p => {
-        if (p >= 100) { clearInterval(interval); setTimeout(() => setStep(4), 400); return 100; }
+        if (p >= 100) { clearInterval(interval); setTimeout(() => {
+          const computed = computeAllScores(answers);
+          setScores(computed);
+          setStage(STAGES.RESULTS);
+        }, 400); return 100; }
         return p + 1;
       });
     }, 50);
@@ -111,93 +133,72 @@ function DemoModal({ isOpen, onClose }) {
       setAnalysisPhase(ph => ph < 4 ? ph + 1 : ph);
     }, 1000);
     return () => { clearInterval(interval); clearInterval(phaseInterval); };
-  }, [step]);
+  }, [stage]);
 
-  // Compute "results" based on inputs
-  const getResults = () => {
-    let risk = 42, necessity = 65;
-    if (profile.age && parseInt(profile.age) < 25) risk += 18;
-    if (profile.previous === "ninguno") risk += 8;
-    if (procedure.motivation === "presion") { risk += 22; necessity -= 25; }
-    if (procedure.motivation === "autoestima") { risk += 5; necessity += 5; }
-    if (procedure.motivation === "apariencia") { necessity += 10; }
-    if (procedure.timeframe === "inmediato") risk += 12;
-    if (procedure.type === "invasivo") risk += 15;
-    risk = Math.min(95, Math.max(15, risk));
-    necessity = Math.min(90, Math.max(10, necessity));
-    return { risk, necessity };
+  const handleAnswer = (value) => {
+    const updated = { ...answers, [currentQ.id]: value };
+    setAnswers(updated);
+
+    // Check red flags
+    if (currentQ.redFlag) {
+      const flag = currentQ.redFlag(value);
+      if (flag && flag.level === 'RED') {
+        setRedFlagType(flag.type);
+        setStage(STAGES.REDFLAG);
+        return;
+      }
+    }
+    // Check multi_select red flags
+    if (currentQ.type === 'multi_select' && Array.isArray(value)) {
+      for (const opt of currentQ.options) {
+        if (typeof opt === 'object' && opt.flag && opt.flag.level === 'RED' && value.includes(opt.value)) {
+          setRedFlagType(opt.flag.type);
+          setStage(STAGES.REDFLAG);
+          return;
+        }
+      }
+    }
+
+    const newVisible = getVisibleQuestions(updated);
+    const nextIdx = currentIdx + 1;
+    if (nextIdx >= newVisible.length) {
+      setStage(STAGES.ANALYSIS);
+    } else {
+      setCurrentIdx(nextIdx);
+    }
   };
 
-  const results = getResults();
-  const riskLevel = results.risk > 70 ? "alto" : results.risk > 45 ? "moderado" : "bajo";
-  const riskColor = results.risk > 70 ? "#E85D5D" : results.risk > 45 ? "#E8A820" : "#02C39A";
+  const handleBack = () => { if (currentIdx > 0) setCurrentIdx(currentIdx - 1); };
 
   if (!isOpen) return null;
 
   const Btn = ({ onClick, children, secondary, disabled }) => (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        background: secondary ? "transparent" : "linear-gradient(135deg,#028090,#02C39A)",
-        color: secondary ? "#8BA3B8" : "#fff",
-        border: secondary ? "1px solid rgba(255,255,255,0.1)" : "none",
-        padding: "12px 28px", borderRadius: 10, fontSize: 14, fontWeight: 600,
-        cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit",
-        opacity: disabled ? 0.4 : 1, transition: "all 0.2s",
-      }}
-    >{children}</button>
+    <button onClick={onClick} disabled={disabled} style={{
+      background: secondary ? "transparent" : "linear-gradient(135deg,#028090,#02C39A)",
+      color: secondary ? "#8BA3B8" : "#fff",
+      border: secondary ? "1px solid rgba(255,255,255,0.1)" : "none",
+      padding: "12px 28px", borderRadius: 10, fontSize: 14, fontWeight: 600,
+      cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit",
+      opacity: disabled ? 0.4 : 1, transition: "all 0.2s",
+    }}>{children}</button>
   );
 
-  const RadioOption = ({ label, value, selected, onClick, desc }) => (
-    <button
-      onClick={onClick}
-      style={{
-        display: "block", width: "100%", textAlign: "left",
-        background: selected ? "rgba(2,195,154,0.08)" : "rgba(255,255,255,0.03)",
-        border: selected ? "1px solid rgba(2,195,154,0.3)" : "1px solid rgba(255,255,255,0.06)",
-        borderRadius: 10, padding: "14px 18px", cursor: "pointer",
-        transition: "all 0.2s", marginBottom: 8, fontFamily: "inherit",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{
-          width: 18, height: 18, borderRadius: "50%",
-          border: selected ? "2px solid #02C39A" : "2px solid rgba(255,255,255,0.15)",
-          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-        }}>
-          {selected && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#02C39A" }} />}
-        </div>
-        <div>
-          <div style={{ fontSize: 14, color: "#E0EAF0", fontWeight: 500 }}>{label}</div>
-          {desc && <div style={{ fontSize: 12, color: "#6B8FA3", marginTop: 2 }}>{desc}</div>}
-        </div>
-      </div>
-    </button>
-  );
-
-  const ProgressBar = ({ value }) => (
-    <div style={{ width: "100%", height: 6, background: "rgba(255,255,255,0.06)", borderRadius: 3, overflow: "hidden" }}>
-      <div style={{ width: `${(step / 4) * 100}%`, height: "100%", background: "linear-gradient(90deg,#028090,#02C39A)", borderRadius: 3, transition: "width 0.4s ease" }} />
-    </div>
-  );
-
-  const ScoreCircle = ({ value, label, color, size = 120 }) => {
+  const ScoreCircle = ({ value, label, color, size = 120, description }) => {
     const circumference = 2 * Math.PI * 42;
     const offset = circumference - (value / 100) * circumference;
     return (
-      <div style={{ textAlign: "center" }}>
+      <div style={{ textAlign: "center", flex: "1 1 140px" }}>
         <svg width={size} height={size} viewBox="0 0 100 100">
           <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
           <circle cx="50" cy="50" r="42" fill="none" stroke={color} strokeWidth="6"
             strokeDasharray={circumference} strokeDashoffset={offset}
             strokeLinecap="round" transform="rotate(-90 50 50)"
-            style={{ transition: "stroke-dashoffset 1.5s ease" }}
-          />
+            style={{ transition: "stroke-dashoffset 1.5s ease" }} />
           <text x="50" y="46" textAnchor="middle" fill={color} fontSize="26" fontWeight="700" fontFamily="'Playfair Display',serif">{value}</text>
           <text x="50" y="62" textAnchor="middle" fill="#6B8FA3" fontSize="8" fontWeight="500">/100</text>
         </svg>
         <div style={{ fontSize: 12, color: "#8BA3B8", marginTop: 4, fontWeight: 500 }}>{label}</div>
+        {description && <div style={{ fontSize: 11, color, marginTop: 2, fontWeight: 600 }}>{description}</div>}
       </div>
     );
   };
@@ -211,146 +212,88 @@ function DemoModal({ isOpen, onClose }) {
     }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{
         background: "#0D2137", border: "1px solid rgba(2,195,154,0.1)",
-        borderRadius: 20, width: "100%", maxWidth: 540,
+        borderRadius: 20, width: "100%", maxWidth: 580,
         padding: "32px 28px", position: "relative",
         boxShadow: "0 24px 80px rgba(0,0,0,0.5)",
         maxHeight: "90vh", overflowY: "auto",
       }}>
-        {/* Close button */}
         <button onClick={onClose} style={{
           position: "absolute", top: 16, right: 16, background: "none", border: "none",
           color: "#5A7A8A", fontSize: 22, cursor: "pointer", lineHeight: 1,
         }}>✕</button>
 
-        {/* Progress */}
-        {step < 4 && (
-          <div style={{ marginBottom: 28 }}>
+        {/* Prototype banner */}
+        <div style={{
+          background: "rgba(244,168,42,0.08)", border: "1px solid rgba(244,168,42,0.2)",
+          padding: "8px 16px", borderRadius: 8, marginBottom: 20,
+          fontSize: 11, color: "#E8A820", textAlign: "center",
+        }}>
+          🧪 Prototipo en validación · Tus respuestas nos ayudan a mejorarlo
+        </div>
+
+        {/* Progress bar for questions */}
+        {stage === STAGES.QUESTIONS && currentQ && (
+          <div style={{ marginBottom: 24 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-              <span style={{ fontSize: 11, color: "#5A7A8A", textTransform: "uppercase", letterSpacing: 2 }}>
-                Copiloto Estético 
+              <span style={{ fontSize: 11, color: "#02C39A", textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>
+                {currentQ.block}
               </span>
-              <span style={{ fontSize: 11, color: "#5A7A8A" }}>Paso {step + 1} de 4</span>
+              <span style={{ fontSize: 11, color: "#5A7A8A" }}>
+                {currentIdx + 1} de {visibleQs.length}
+              </span>
             </div>
-            <ProgressBar />
+            <div style={{ width: "100%", height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ width: `${((currentIdx + 1) / visibleQs.length) * 100}%`, height: "100%", background: "linear-gradient(90deg,#028090,#02C39A)", borderRadius: 2, transition: "width 0.4s ease" }} />
+            </div>
           </div>
         )}
 
-        {/* ─── STEP 0: Welcome ─── */}
-        {step === 0 && (
+        {/* ─── WELCOME ─── */}
+        {stage === STAGES.WELCOME && (
           <div>
-            <div style={{ textAlign: "center", marginBottom: 28 }}>
+            <div style={{ textAlign: "center", marginBottom: 24 }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>🧭</div>
-              <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, color: "#fff", marginBottom: 12, fontWeight: 700 }}>
-                Antes de decidir, evalúa tu caso
+              <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 24, color: "#fff", marginBottom: 12, fontWeight: 700 }}>
+                Hola. Gracias por estar aquí.
               </h2>
-              <p style={{ fontSize: 15, color: "#8BA3B8", lineHeight: 1.7, maxWidth: 400, margin: "0 auto" }}>
-                En los siguientes pasos, analizaremos tu perfil y motivaciones para darte 
-                un diagnóstico honesto sobre si este procedimiento realmente tiene sentido para ti.
+              <p style={{ fontSize: 15, color: "#8BA3B8", lineHeight: 1.7, maxWidth: 420, margin: "0 auto" }}>
+                Son alrededor de <strong style={{color:"#fff"}}>20 preguntas</strong> organizadas en 3 bloques cortos. Toma entre 5 y 8 minutos.
               </p>
             </div>
-            <div style={{ background: "rgba(2,195,154,0.06)", border: "1px solid rgba(2,195,154,0.12)", borderRadius: 12, padding: 16, marginBottom: 28 }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                <span style={{ color: "#02C39A", fontSize: 16 }}>ℹ️</span>
-                <p style={{ fontSize: 13, color: "#8BA3B8", lineHeight: 1.6, margin: 0 }}>
-                  Este es un <strong style={{ color: "#02C39A" }}>diagnóstico de decisión</strong> del Copiloto Estético . 
-                  Los resultados son orientativos y no reemplazan el consejo de un profesional médico.
-                </p>
-              </div>
+            <div style={{ background: "rgba(2,195,154,0.06)", border: "1px solid rgba(2,195,154,0.12)", borderRadius: 12, padding: 16, marginBottom: 20 }}>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 14, color: "#8BA3B8", lineHeight: 1.7 }}>
+                <li style={{ marginBottom: 8, display: "flex", gap: 8 }}><span style={{color:"#02C39A"}}>→</span> No vendemos nada, no agendamos citas, <strong style={{color:"#fff"}}>no te vamos a llamar.</strong></li>
+                <li style={{ display: "flex", gap: 8 }}><span style={{color:"#02C39A"}}>→</span> Las respuestas son privadas y se guardan de forma agregada.</li>
+              </ul>
             </div>
+            <label style={{
+              display: "flex", gap: 10, alignItems: "flex-start",
+              background: "rgba(255,255,255,0.03)", padding: 14, borderRadius: 8,
+              marginBottom: 20, cursor: "pointer", fontSize: 13, color: "#8BA3B8",
+            }}>
+              <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ marginTop: 2 }} />
+              <span>Acepto que mis respuestas se guarden de forma agregada y anónima para mejorar el Copiloto.</span>
+            </label>
             <div style={{ display: "flex", justifyContent: "center" }}>
-              <Btn onClick={() => setStep(1)}>Evaluar mi decisión</Btn>
+              <Btn onClick={() => setStage(STAGES.QUESTIONS)} disabled={!consent}>Empezar el análisis →</Btn>
             </div>
           </div>
         )}
 
-        {/* ─── STEP 1: Profile ─── */}
-        {step === 1 && (
-          <div>
-            <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, color: "#fff", marginBottom: 6 }}>
-              Cuéntanos sobre ti
-            </h3>
-            <p style={{ fontSize: 14, color: "#6B8FA3", marginBottom: 24 }}>Tu perfil nos ayuda a personalizar el análisis.</p>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, color: "#8BA3B8", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 8 }}>Rango de edad</label>
-              {[
-                { v: "18-24", l: "18 – 24 años" },
-                { v: "25-34", l: "25 – 34 años" },
-                { v: "35-44", l: "35 – 44 años" },
-                { v: "45+", l: "45 años o más" },
-              ].map(o => <RadioOption key={o.v} label={o.l} value={o.v} selected={profile.age === o.v} onClick={() => setProfile(p => ({...p, age: o.v}))} />)}
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, color: "#8BA3B8", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 8 }}>Género</label>
-              {[
-                { v: "mujer", l: "Mujer" },
-                { v: "hombre", l: "Hombre" },
-                { v: "otro", l: "Prefiero no decirlo" },
-              ].map(o => <RadioOption key={o.v} label={o.l} value={o.v} selected={profile.gender === o.v} onClick={() => setProfile(p => ({...p, gender: o.v}))} />)}
-            </div>
-
-            <div style={{ marginBottom: 28 }}>
-              <label style={{ fontSize: 12, color: "#8BA3B8", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 8 }}>Procedimientos estéticos previos</label>
-              {[
-                { v: "ninguno", l: "Ninguno — sería mi primera vez" },
-                { v: "pocos", l: "1 a 3 procedimientos previos" },
-                { v: "varios", l: "4 o más procedimientos previos" },
-              ].map(o => <RadioOption key={o.v} label={o.l} value={o.v} selected={profile.previous === o.v} onClick={() => setProfile(p => ({...p, previous: o.v}))} />)}
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <Btn secondary onClick={() => setStep(0)}>Atrás</Btn>
-              <Btn onClick={() => setStep(2)} disabled={!profile.age || !profile.gender || !profile.previous}>Siguiente</Btn>
-            </div>
-          </div>
+        {/* ─── QUESTIONS ─── */}
+        {stage === STAGES.QUESTIONS && currentQ && (
+          <QuestionRenderer
+            question={currentQ}
+            value={answers[currentQ.id]}
+            allAnswers={answers}
+            onAnswer={handleAnswer}
+            onBack={currentIdx > 0 ? handleBack : null}
+            Btn={Btn}
+          />
         )}
 
-        {/* ─── STEP 2: Procedure & Motivation ─── */}
-        {step === 2 && (
-          <div>
-            <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, color: "#fff", marginBottom: 6 }}>
-              Tu procedimiento y motivación
-            </h3>
-            <p style={{ fontSize: 14, color: "#6B8FA3", marginBottom: 24 }}>Entender tu motivación es clave para un buen análisis.</p>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, color: "#8BA3B8", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 8 }}>Tipo de procedimiento</label>
-              {[
-                { v: "no_invasivo", l: "No invasivo", desc: "Botox, ácido hialurónico, láser, etc." },
-                { v: "minimamente", l: "Mínimamente invasivo", desc: "Lipolisis, hilos tensores, microagujas, etc." },
-                { v: "invasivo", l: "Invasivo / quirúrgico", desc: "Liposucción, rinoplastia, implantes, etc." },
-              ].map(o => <RadioOption key={o.v} label={o.l} desc={o.desc} value={o.v} selected={procedure.type === o.v} onClick={() => setProcedure(p => ({...p, type: o.v}))} />)}
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, color: "#8BA3B8", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 8 }}>Motivación principal</label>
-              {[
-                { v: "apariencia", l: "Mejorar mi apariencia", desc: "Corregir algo específico que me incomoda" },
-                { v: "autoestima", l: "Sentirme más seguro/a", desc: "Aumentar mi confianza personal" },
-                { v: "presion", l: "Presión social o de pareja", desc: "Alguien me sugirió que lo hiciera" },
-                { v: "explorando", l: "Solo estoy explorando", desc: "Aún no tengo claro si lo quiero hacer" },
-              ].map(o => <RadioOption key={o.v} label={o.l} desc={o.desc} value={o.v} selected={procedure.motivation === o.v} onClick={() => setProcedure(p => ({...p, motivation: o.v}))} />)}
-            </div>
-
-            <div style={{ marginBottom: 28 }}>
-              <label style={{ fontSize: 12, color: "#8BA3B8", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 8 }}>¿Cuándo planeas hacerlo?</label>
-              {[
-                { v: "inmediato", l: "Lo antes posible" },
-                { v: "meses", l: "En los próximos 3-6 meses" },
-                { v: "evaluando", l: "Aún estoy evaluando si lo hago" },
-              ].map(o => <RadioOption key={o.v} label={o.l} value={o.v} selected={procedure.timeframe === o.v} onClick={() => setProcedure(p => ({...p, timeframe: o.v}))} />)}
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <Btn secondary onClick={() => setStep(1)}>Atrás</Btn>
-              <Btn onClick={() => setStep(3)} disabled={!procedure.type || !procedure.motivation || !procedure.timeframe}>Analizar</Btn>
-            </div>
-          </div>
-        )}
-
-        {/* ─── STEP 3: Analysis Animation ─── */}
-        {step === 3 && (
+        {/* ─── ANALYSIS ─── */}
+        {stage === STAGES.ANALYSIS && (
           <div style={{ textAlign: "center", padding: "40px 0" }}>
             <div style={{ marginBottom: 32 }}>
               <div style={{
@@ -363,7 +306,7 @@ function DemoModal({ isOpen, onClose }) {
               </div>
               <style>{`@keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }`}</style>
               <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, color: "#fff", marginBottom: 8 }}>
-                Diagnosticando tu decisión...
+                Calibrando tu análisis...
               </h3>
               <p style={{ fontSize: 14, color: "#02C39A", minHeight: 20, transition: "opacity 0.3s" }}>
                 {analysisMessages[analysisPhase]}
@@ -371,86 +314,82 @@ function DemoModal({ isOpen, onClose }) {
             </div>
             <div style={{ maxWidth: 300, margin: "0 auto" }}>
               <div style={{ width: "100%", height: 8, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden" }}>
-                <div style={{
-                  width: `${analysisProgress}%`, height: "100%",
-                  background: "linear-gradient(90deg,#028090,#02C39A)",
-                  borderRadius: 4, transition: "width 0.05s linear",
-                }} />
+                <div style={{ width: `${analysisProgress}%`, height: "100%", background: "linear-gradient(90deg,#028090,#02C39A)", borderRadius: 4, transition: "width 0.05s linear" }} />
               </div>
               <div style={{ fontSize: 12, color: "#5A7A8A", marginTop: 8 }}>{analysisProgress}%</div>
             </div>
           </div>
         )}
 
-        {/* ─── STEP 4: Results ─── */}
-        {step === 4 && (
+        {/* ─── RESULTS ─── */}
+        {stage === STAGES.RESULTS && scores && (
           <div>
-            <div style={{ textAlign: "center", marginBottom: 28 }}>
-              <div style={{ fontSize: 11, color: "#5A7A8A", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8 }}>
-                Tu análisis personalizado
-              </div>
-              <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 24, color: "#fff", marginBottom: 4 }}>
-                Tu diagnóstico de decisión
-              </h3>
-            </div>
-
-            {/* Scores */}
-            <div style={{ display: "flex", justifyContent: "center", gap: 40, marginBottom: 28 }}>
-              <ScoreCircle value={results.risk} label="Índice de riesgo" color={riskColor} />
-              <ScoreCircle value={results.necessity} label="Necesidad real" color="#028090" />
-            </div>
-
-            {/* Risk Level Badge */}
             <div style={{ textAlign: "center", marginBottom: 24 }}>
-              <span style={{
-                display: "inline-block", padding: "6px 16px", borderRadius: 100,
-                background: riskColor + "15", border: `1px solid ${riskColor}30`,
-                fontSize: 13, fontWeight: 600, color: riskColor,
-              }}>
-                Nivel de riesgo: {riskLevel}
-              </span>
+              <div style={{ fontSize: 11, color: "#5A7A8A", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8 }}>Tu análisis personalizado</div>
+              <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 24, color: "#fff", marginBottom: 8 }}>Tu diagnóstico de decisión</h3>
+              <p style={{ fontSize: 13, color: "#6B8FA3" }}>Tres scores. Cada uno con las variables que lo producen.</p>
             </div>
 
-            {/* Findings */}
+            {/* Soft flags */}
+            {(() => {
+              const { softFlags } = evaluateFlags(answers);
+              return softFlags.length > 0 ? (
+                <div style={{ background: "rgba(232,168,32,0.08)", border: "1px solid rgba(232,168,32,0.2)", padding: 14, borderRadius: 8, marginBottom: 20, fontSize: 13, color: "#E8A820" }}>
+                  <strong>⚠️ Atención:</strong> {SOFT_FLAG_MESSAGES[softFlags[0]]}
+                </div>
+              ) : null;
+            })()}
+
+            <div style={{ display: "flex", justifyContent: "center", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
+              <ScoreCircle
+                value={scores.necesidad.score}
+                label="Necesidad clínica"
+                color={scores.necesidad.score >= 67 ? "#02C39A" : scores.necesidad.score >= 34 ? "#E8A820" : "#E85D5D"}
+                description={scores.necesidad.label}
+              />
+              <ScoreCircle
+                value={scores.regret.score}
+                label="Riesgo de arrepentimiento"
+                color={scores.regret.score >= 67 ? "#E85D5D" : scores.regret.score >= 34 ? "#E8A820" : "#02C39A"}
+                description={scores.regret.label}
+              />
+              <ScoreCircle
+                value={scores.urgencia.score}
+                label="Timing"
+                color={scores.urgencia.score >= 67 ? "#E85D5D" : scores.urgencia.score >= 34 ? "#E8A820" : "#02C39A"}
+                description={scores.urgencia.label}
+              />
+            </div>
+
+            {/* Top contributors */}
             <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 12, color: "#5A7A8A", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Hallazgos clave</div>
-              {[
-                procedure.motivation === "presion"
-                  ? { icon: "⚠️", text: "Tu motivación principal es presión externa. Esto se asocia con mayor insatisfacción post-procedimiento.", color: "#E85D5D" }
-                  : { icon: "✓", text: "Tu motivación es internamente dirigida, lo cual se asocia con mejores resultados de satisfacción.", color: "#02C39A" },
-                procedure.timeframe === "inmediato"
-                  ? { icon: "⚠️", text: "Querer actuar de inmediato puede indicar decisión impulsiva. Recomendamos tomar al menos 2-4 semanas.", color: "#E8A820" }
-                  : { icon: "✓", text: "Tu horizonte temporal permite una decisión reflexiva y bien informada.", color: "#02C39A" },
-                procedure.type === "invasivo"
-                  ? { icon: "⚠️", text: "Los procedimientos invasivos tienen mayor perfil de riesgo. Evalúa alternativas menos invasivas primero.", color: "#E8A820" }
-                  : { icon: "✓", text: "El tipo de procedimiento que consideras tiene un perfil de riesgo manejable.", color: "#02C39A" },
-              ].map((f, i) => (
+              <div style={{ fontSize: 12, color: "#5A7A8A", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Hallazgos principales</div>
+              {[...scores.necesidad.contributors.slice(0,1), ...scores.regret.contributors.slice(0,2)].map((c, i) => (
                 <div key={i} style={{
-                  display: "flex", gap: 10, alignItems: "flex-start",
-                  padding: "12px 14px", marginBottom: 6,
-                  background: f.color + "08", borderLeft: `3px solid ${f.color}`,
+                  display: "flex", gap: 10, alignItems: "flex-start", padding: "12px 14px", marginBottom: 6,
+                  background: c.impact > 0 ? "rgba(232,93,93,0.08)" : "rgba(2,195,154,0.08)",
+                  borderLeft: `3px solid ${c.impact > 0 ? "#E85D5D" : "#02C39A"}`,
                   borderRadius: "0 8px 8px 0",
                 }}>
-                  <span style={{ flexShrink: 0 }}>{f.icon}</span>
-                  <span style={{ fontSize: 13, color: "#C0D0DC", lineHeight: 1.5 }}>{f.text}</span>
+                  <span style={{ flexShrink: 0 }}>{c.impact > 0 ? "⚠️" : "✓"}</span>
+                  <div>
+                    <div style={{ fontSize: 13, color: "#E0EAF0", fontWeight: 600, marginBottom: 2 }}>{c.variable}</div>
+                    <div style={{ fontSize: 12, color: "#8BA3B8", lineHeight: 1.5 }}>{c.explanation}</div>
+                  </div>
                 </div>
               ))}
             </div>
 
-            {/* Recommendations */}
-            <div style={{
-              background: "rgba(2,195,154,0.05)", border: "1px solid rgba(2,195,154,0.12)",
-              borderRadius: 12, padding: 18, marginBottom: 28,
-            }}>
+            {/* Questions for the doctor */}
+            <div style={{ background: "rgba(2,195,154,0.05)", border: "1px solid rgba(2,195,154,0.12)", borderRadius: 12, padding: 18, marginBottom: 28 }}>
               <div style={{ fontSize: 12, color: "#02C39A", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10, fontWeight: 600 }}>
-                Recomendaciones
+                3 preguntas para hacerle a tu médico(a)
               </div>
               <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
                 {[
-                  "Consulta con al menos 2 profesionales antes de decidir",
-                  "Pide ver casos similares al tuyo con resultados reales",
-                  results.risk > 60 ? "Considera alternativas no invasivas primero" : "Investiga a fondo los riesgos específicos del procedimiento",
-                  "No tomes la decisión final el mismo día de la consulta",
+                  "¿Qué porcentaje de tus pacientes con un perfil como el mío reportan resultado significativo? Pídele un número.",
+                  "Si solo pudiera hacerme la mitad de las sesiones, ¿qué resultado realista debería esperar?",
+                  "¿Qué producto específico (marca y dosis) me aplicarías y desde cuándo lo viene usando esta clínica?",
                 ].map((r, i) => (
                   <li key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 8 }}>
                     <span style={{ color: "#02C39A", flexShrink: 0, marginTop: 1 }}>→</span>
@@ -460,10 +399,9 @@ function DemoModal({ isOpen, onClose }) {
               </ul>
             </div>
 
-            {/* Disclaimer */}
             <p style={{ fontSize: 11, color: "#4A6A7A", textAlign: "center", lineHeight: 1.6, marginBottom: 20 }}>
-              Este diagnóstico es orientativo. La versión completa del Copiloto Estético  
-              utiliza modelos avanzados de IA entrenados con datos clínicos reales para un análisis más profundo.
+              Este diagnóstico es orientativo y forma parte de un prototipo en validación.
+              No reemplaza el consejo de un profesional médico.
             </p>
 
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
@@ -474,7 +412,209 @@ function DemoModal({ isOpen, onClose }) {
             </div>
           </div>
         )}
+
+        {/* ─── RED FLAG ─── */}
+        {stage === STAGES.REDFLAG && (
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>🛑</div>
+            <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, color: "#fff", marginBottom: 12 }}>
+              Tu seguridad es lo primero
+            </h3>
+            <p style={{ fontSize: 15, color: "#8BA3B8", lineHeight: 1.7, marginBottom: 24, maxWidth: 400, margin: "0 auto 24px" }}>
+              {RED_FLAG_MESSAGES[redFlagType] || "Hemos detectado una condición que requiere atención médica directa antes de considerar cualquier procedimiento estético."}
+            </p>
+            <div style={{ background: "rgba(232,93,93,0.08)", border: "1px solid rgba(232,93,93,0.2)", borderRadius: 12, padding: 18, marginBottom: 28, textAlign: "left" }}>
+              <div style={{ fontSize: 13, color: "#E85D5D", fontWeight: 600, marginBottom: 8 }}>Recomendación</div>
+              <p style={{ fontSize: 13, color: "#8BA3B8", lineHeight: 1.6, margin: 0 }}>
+                Consulta con tu médico tratante antes de considerar cualquier procedimiento estético.
+                Este copiloto no puede continuar el análisis en estas condiciones porque tu seguridad está primero.
+              </p>
+            </div>
+            <Btn onClick={onClose}>Entendido, cerrar</Btn>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+// ─── Question Renderer ──────────────────────────────────────
+function QuestionRenderer({ question, value, allAnswers, onAnswer, onBack, Btn }) {
+  const [localValue, setLocalValue] = useState(value || (question.type === 'multi_select' ? [] : ''));
+  const [numericInput, setNumericInput] = useState(value || '');
+
+  useEffect(() => {
+    setLocalValue(value || (question.type === 'multi_select' ? [] : ''));
+    setNumericInput(value || '');
+  }, [question.id, value]);
+
+  const RadioOption = ({ label, selected, onClick, desc }) => (
+    <button onClick={onClick} style={{
+      display: "block", width: "100%", textAlign: "left",
+      background: selected ? "rgba(2,195,154,0.08)" : "rgba(255,255,255,0.03)",
+      border: selected ? "1px solid rgba(2,195,154,0.3)" : "1px solid rgba(255,255,255,0.06)",
+      borderRadius: 10, padding: "14px 18px", cursor: "pointer",
+      transition: "all 0.2s", marginBottom: 8, fontFamily: "inherit",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{
+          width: 18, height: 18, borderRadius: question.type === 'multi_select' ? 4 : "50%",
+          border: selected ? "2px solid #02C39A" : "2px solid rgba(255,255,255,0.15)",
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+        }}>
+          {selected && <div style={{ width: 8, height: 8, borderRadius: question.type === 'multi_select' ? 2 : "50%", background: "#02C39A" }} />}
+        </div>
+        <div>
+          <div style={{ fontSize: 14, color: "#E0EAF0", fontWeight: 500 }}>{label}</div>
+          {desc && <div style={{ fontSize: 12, color: "#6B8FA3", marginTop: 2 }}>{desc}</div>}
+        </div>
+      </div>
+    </button>
+  );
+
+  const canSubmit = () => {
+    if (!question.required) return true;
+    if (question.type === 'numeric') return numericInput !== '' && Number(numericInput) >= (question.min||0) && Number(numericInput) <= (question.max||999);
+    if (question.type === 'multi_select') return localValue.length > 0;
+    if (question.type === 'nps') return true;
+    return localValue !== '';
+  };
+
+  const handleSubmit = () => {
+    if (question.type === 'numeric') onAnswer(Number(numericInput));
+    else if (question.type === 'nps') onAnswer(localValue || 5);
+    else onAnswer(localValue);
+  };
+
+  const getOptions = () => {
+    if (!question.options) return [];
+    return question.options.map(o => typeof o === 'string' ? { value: o, label: o } : o);
+  };
+
+  return (
+    <div>
+      <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, color: "#fff", marginBottom: 6 }}>
+        {question.text}
+      </h3>
+      {question.helper && (
+        <p style={{ fontSize: 13, color: "#6B8FA3", marginBottom: 20 }}>{question.helper}</p>
+      )}
+
+      {/* NUMERIC */}
+      {question.type === 'numeric' && (
+        <div style={{ marginBottom: 24 }}>
+          <input
+            type="number"
+            value={numericInput}
+            onChange={e => setNumericInput(e.target.value)}
+            min={question.min} max={question.max}
+            placeholder={`${question.min || ''} — ${question.max || ''}`}
+            style={{
+              width: "100%", padding: "14px 18px", fontSize: 18, borderRadius: 10,
+              border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)",
+              color: "#fff", fontFamily: "inherit", textAlign: "center",
+            }}
+            onKeyDown={e => { if (e.key === 'Enter' && canSubmit()) handleSubmit(); }}
+          />
+        </div>
+      )}
+
+      {/* SINGLE SELECT */}
+      {question.type === 'single_select' && (
+        <div style={{ marginBottom: 24 }}>
+          {getOptions().map(o => (
+            <RadioOption
+              key={o.value}
+              label={o.label}
+              selected={localValue === o.value}
+              onClick={() => { setLocalValue(o.value); setTimeout(() => onAnswer(o.value), 200); }}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* MULTI SELECT */}
+      {question.type === 'multi_select' && (
+        <div style={{ marginBottom: 24 }}>
+          {getOptions().map(o => {
+            const isSelected = localValue.includes(o.value);
+            const isExclusive = o.exclusive;
+            return (
+              <RadioOption
+                key={o.value}
+                label={o.label}
+                selected={isSelected}
+                onClick={() => {
+                  let next;
+                  if (isExclusive) {
+                    next = isSelected ? [] : [o.value];
+                  } else {
+                    const withoutExclusive = localValue.filter(v => {
+                      const opt = getOptions().find(x => x.value === v);
+                      return !opt?.exclusive;
+                    });
+                    next = isSelected ? withoutExclusive.filter(v => v !== o.value) : [...withoutExclusive, o.value];
+                  }
+                  setLocalValue(next);
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      {/* TEXT SHORT */}
+      {question.type === 'text_short' && (
+        <div style={{ marginBottom: 24 }}>
+          <textarea
+            value={localValue}
+            onChange={e => setLocalValue(e.target.value)}
+            placeholder="Escribe tu respuesta..."
+            rows={3}
+            style={{
+              width: "100%", padding: "14px 18px", fontSize: 14, borderRadius: 10,
+              border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)",
+              color: "#fff", fontFamily: "inherit", resize: "vertical",
+            }}
+          />
+        </div>
+      )}
+
+      {/* NPS */}
+      {question.type === 'nps' && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+            {[0,1,2,3,4,5,6,7,8,9,10].map(n => (
+              <button key={n} onClick={() => setLocalValue(n)} style={{
+                width: 40, height: 40, borderRadius: 8,
+                background: localValue === n ? "rgba(2,195,154,0.2)" : "rgba(255,255,255,0.05)",
+                border: localValue === n ? "2px solid #02C39A" : "1px solid rgba(255,255,255,0.1)",
+                color: localValue === n ? "#02C39A" : "#8BA3B8",
+                fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+              }}>{n}</button>
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+            <span style={{ fontSize: 11, color: "#5A7A8A" }}>Nada probable</span>
+            <span style={{ fontSize: 11, color: "#5A7A8A" }}>Muy probable</span>
+          </div>
+        </div>
+      )}
+
+      {/* Navigation */}
+      {question.type !== 'single_select' && (
+        <div style={{ display: "flex", justifyContent: onBack ? "space-between" : "flex-end" }}>
+          {onBack && <Btn secondary onClick={onBack}>Atrás</Btn>}
+          <Btn onClick={handleSubmit} disabled={!canSubmit()}>
+            {currentIdx >= visibleQs.length - 1 ? "Ver mi análisis" : "Siguiente"}
+          </Btn>
+        </div>
+      )}
+      {question.type === 'single_select' && onBack && (
+        <div style={{ marginTop: 8 }}>
+          <Btn secondary onClick={onBack}>Atrás</Btn>
+        </div>
+      )}
     </div>
   );
 }
@@ -537,8 +677,6 @@ export default function CopilotoLanding() {
         }
 
         .section { max-width:1200px; margin:0 auto; padding:0 28px; }
-
-        /* Hero */
         .hero { min-height:100vh; display:flex; flex-direction:column; justify-content:center; position:relative; overflow:hidden; }
         .hero-bg { position:absolute; top:0; left:0; right:0; bottom:0; background: radial-gradient(ellipse at 70% 20%, rgba(2,128,144,0.12) 0%, transparent 50%), radial-gradient(ellipse at 20% 80%, rgba(2,195,154,0.06) 0%, transparent 40%); }
         .hero-grid { position:absolute; top:0; left:0; right:0; bottom:0; background-image: linear-gradient(rgba(2,195,154,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(2,195,154,0.03) 1px, transparent 1px); background-size: 60px 60px; }
@@ -558,18 +696,14 @@ export default function CopilotoLanding() {
         .hero-success { color:#02C39A; font-size:15px; font-weight:500; display:flex; align-items:center; gap:8px; }
         .hero-scroll { position:absolute; bottom:40px; left:50%; transform:translateX(-50%); color:#5A7A8A; animation: float 3s ease-in-out infinite; cursor:pointer; }
         @keyframes float { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(8px)} }
-
         .hero-stats { display:flex; gap:40px; margin-top:48px; padding-top:32px; border-top:1px solid rgba(255,255,255,0.06); }
         .hero-stat-num { font-family:'Playfair Display',serif; font-size:32px; color:#02C39A; font-weight:700; }
         .hero-stat-label { font-size:12px; color:#5A7A8A; text-transform:uppercase; letter-spacing:1px; margin-top:4px; }
-
-        /* Problem Section */
         .problem { padding:120px 0; position:relative; }
         .problem::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(2,195,154,0.15),transparent); }
         .section-label { font-size:11px; text-transform:uppercase; letter-spacing:3px; color:#028090; font-weight:600; margin-bottom:12px; }
         .section-title { font-family:'Playfair Display',serif; font-size:clamp(28px,4vw,44px); color:#fff; font-weight:700; line-height:1.2; margin-bottom:20px; letter-spacing:-0.5px; }
         .section-desc { font-size:17px; color:#6B8FA3; line-height:1.7; max-width:600px; margin-bottom:56px; font-weight:300; }
-
         .tensions-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:20px; }
         .tension-card { background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:14px; padding:32px; transition:all 0.3s; position:relative; overflow:hidden; }
         .tension-card:hover { border-color:rgba(2,195,154,0.2); background:rgba(2,195,154,0.03); transform:translateY(-2px); }
@@ -577,8 +711,6 @@ export default function CopilotoLanding() {
         .tension-icon { color:#028090; margin-bottom:16px; }
         .tension-title { font-size:16px; font-weight:600; color:#fff; margin-bottom:10px; }
         .tension-desc { font-size:14px; color:#6B8FA3; line-height:1.7; }
-
-        /* Solution */
         .solution { padding:120px 0; position:relative; background:linear-gradient(180deg, transparent 0%, rgba(2,128,144,0.04) 50%, transparent 100%); }
         .solution-grid { display:grid; grid-template-columns:1fr 1fr; gap:80px; align-items:center; }
         @media(max-width:900px) { .solution-grid { grid-template-columns:1fr; gap:48px; } }
@@ -592,13 +724,10 @@ export default function CopilotoLanding() {
         .mockup-score-val { font-family:'Playfair Display',serif; font-size:36px; font-weight:700; }
         .mockup-score-label { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#6B8FA3; margin-top:6px; }
         .mockup-glow { position:absolute; width:200px; height:200px; border-radius:50%; filter:blur(80px); opacity:0.2; }
-
         .solution-features { list-style:none; display:flex; flex-direction:column; gap:20px; margin-top:32px; }
         .solution-feature { display:flex; gap:14px; align-items:flex-start; }
         .solution-feature-text { font-size:15px; color:#8BA3B8; line-height:1.6; }
         .solution-feature-text strong { color:#fff; font-weight:600; }
-
-        /* How it Works */
         .how { padding:120px 0; }
         .steps { display:grid; grid-template-columns:repeat(4,1fr); gap:24px; margin-top:60px; position:relative; }
         .steps::before { content:''; position:absolute; top:40px; left:12%; right:12%; height:1px; background:linear-gradient(90deg, rgba(2,195,154,0.3), rgba(2,128,144,0.1)); }
@@ -608,15 +737,11 @@ export default function CopilotoLanding() {
         .step-num { width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg,#028090,#02C39A); display:flex; align-items:center; justify-content:center; margin:0 auto 20px; font-family:'Playfair Display',serif; font-size:22px; font-weight:700; color:#fff; box-shadow:0 0 30px rgba(2,195,154,0.2); }
         .step-title { font-size:15px; font-weight:600; color:#fff; margin-bottom:8px; }
         .step-desc { font-size:13px; color:#6B8FA3; line-height:1.6; max-width:220px; margin:0 auto; }
-
-        /* Demo CTA */
         .demo-section { padding:80px 0; position:relative; }
         .demo-card { background: linear-gradient(135deg, rgba(2,128,144,0.1), rgba(2,195,154,0.05)); border:1px solid rgba(2,195,154,0.15); border-radius:24px; padding:56px 40px; text-align:center; position:relative; overflow:hidden; }
         .demo-card::before { content:''; position:absolute; top:-100px; right:-100px; width:300px; height:300px; border-radius:50%; background:rgba(2,195,154,0.04); filter:blur(60px); }
         .demo-btn { background:linear-gradient(135deg,#028090,#02C39A); color:#fff; padding:16px 40px; border-radius:12px; font-size:17px; font-weight:700; border:none; cursor:pointer; font-family:inherit; transition:all 0.3s; box-shadow:0 4px 30px rgba(2,195,154,0.25); }
         .demo-btn:hover { transform:translateY(-2px); box-shadow:0 8px 40px rgba(2,195,154,0.35); }
-
-        /* Validation */
         .validation { padding:120px 0; background:linear-gradient(180deg, transparent, rgba(2,128,144,0.03), transparent); }
         .val-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:24px; margin-top:48px; }
         .val-card { background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:16px; padding:36px 28px; text-align:center; transition:all 0.3s; }
@@ -624,8 +749,6 @@ export default function CopilotoLanding() {
         .val-num { font-family:'Playfair Display',serif; font-size:48px; font-weight:700; background:linear-gradient(135deg,#02C39A,#028090); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; line-height:1.1; }
         .val-label { font-size:14px; color:#8BA3B8; margin-top:10px; line-height:1.5; }
         .val-caption { margin-top:48px; font-size:14px; color:#5A7A8A; text-align:center; line-height:1.7; max-width:700px; margin-left:auto; margin-right:auto; font-style:italic; }
-
-        /* Credibility */
         .credibility { padding:100px 0; }
         .cred-card { background:linear-gradient(135deg,rgba(2,128,144,0.06),rgba(2,195,154,0.03)); border:1px solid rgba(2,195,154,0.1); border-radius:20px; padding:56px; display:grid; grid-template-columns:1fr 1fr; gap:56px; align-items:center; }
         @media(max-width:768px) { .cred-card { grid-template-columns:1fr; padding:36px 28px; } }
@@ -633,14 +756,10 @@ export default function CopilotoLanding() {
         .cred-stat { text-align:center; }
         .cred-stat-num { font-family:'Playfair Display',serif; font-size:36px; font-weight:700; color:#02C39A; }
         .cred-stat-label { font-size:12px; color:#6B8FA3; text-transform:uppercase; letter-spacing:1px; margin-top:6px; }
-
-        /* CTA Final */
         .cta-final { padding:120px 0; text-align:center; position:relative; }
         .cta-final::before { content:''; position:absolute; top:50%; left:50%; width:600px; height:600px; transform:translate(-50%,-50%); border-radius:50%; background:radial-gradient(circle,rgba(2,195,154,0.06),transparent 60%); }
         .cta-final .section-title { max-width:700px; margin:0 auto 20px; }
         .cta-final .section-desc { max-width:500px; margin:0 auto 40px; text-align:center; }
-
-        /* Footer */
         .footer { border-top:1px solid rgba(255,255,255,0.05); padding:40px 0; }
         .footer-inner { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
         .footer-text { font-size:13px; color:#4A6A7A; }
@@ -649,10 +768,9 @@ export default function CopilotoLanding() {
         .footer-link:hover { color:#02C39A; }
       `}</style>
 
-      {/* ─── DEMO MODAL ────────────────────────────────── */}
       <DemoModal isOpen={demoOpen} onClose={() => setDemoOpen(false)} />
 
-      {/* ─── NAV ───────────────────────────────────────── */}
+      {/* NAV */}
       <nav className={`nav ${scrolled ? "nav-scrolled" : ""}`}>
         <div className="nav-inner">
           <a href="#" className="nav-logo">Copiloto<span> Estético</span></a>
@@ -679,26 +797,21 @@ export default function CopilotoLanding() {
         </div>
       )}
 
-      {/* ─── HERO ──────────────────────────────────────── */}
+      {/* HERO */}
       <section className="hero">
         <div className="hero-bg"/>
         <div className="hero-grid"/>
         <div className="section hero-content">
           <FadeIn>
-            <div className="hero-badge">
-              <span className="hero-badge-dot"/> Disponible ahora
-            </div>
+            <div className="hero-badge"><span className="hero-badge-dot"/> Disponible ahora</div>
           </FadeIn>
           <FadeIn delay={0.1}>
-            <h1>
-              No dejes que una mala decisión<br/>
-              <em>te marque para siempre.</em>
-            </h1>
+            <h1>No dejes que una mala decisión<br/><em>te marque para siempre.</em></h1>
           </FadeIn>
           <FadeIn delay={0.2}>
             <p className="hero-sub">
-              La mayoría de personas toma decisiones estéticas sin entender los riesgos, 
-              las alternativas ni las consecuencias. El Copiloto Estético es la primera herramienta 
+              La mayoría de personas toma decisiones estéticas sin entender los riesgos,
+              las alternativas ni las consecuencias. El Copiloto Estético es la primera herramienta
               de análisis que te ayuda a entender si un procedimiento realmente tiene sentido para ti — antes de que sea tarde.
             </p>
           </FadeIn>
@@ -732,7 +845,7 @@ export default function CopilotoLanding() {
         <a href="#problema" className="hero-scroll"><IconArrowDown/></a>
       </section>
 
-      {/* ─── PROBLEM ───────────────────────────────────── */}
+      {/* PROBLEM */}
       <section className="problem" id="problema">
         <div className="section">
           <FadeIn>
@@ -742,12 +855,11 @@ export default function CopilotoLanding() {
               <em style={{fontFamily:"'Playfair Display',serif",color:"#02C39A",fontStyle:"italic"}}>decidir rápido</em> y arrepentirse después.
             </div>
             <div className="section-desc">
-              Sobretratamiento. Arrepentimiento. Resultados inesperados. 
-              Once años observando estas decisiones revelaron cinco tensiones 
+              Sobretratamiento. Arrepentimiento. Resultados inesperados.
+              Más de una década observando estas decisiones revelaron cinco tensiones
               que casi nadie está resolviendo.
             </div>
           </FadeIn>
-
           <div className="tensions-grid">
             {[
               { icon: <IconScale/>, num: "01", title: "Incentivos a la sobreintervención", desc: "El ingreso del profesional crece con cada procedimiento realizado, no con la salud o satisfacción del paciente." },
@@ -769,18 +881,16 @@ export default function CopilotoLanding() {
         </div>
       </section>
 
-      {/* ─── SOLUTION ──────────────────────────────────── */}
+      {/* SOLUTION */}
       <section className="solution" id="solucion">
         <div className="section">
           <div className="solution-grid">
             <div>
               <FadeIn>
                 <div className="section-label">La solución</div>
-                <div className="section-title">
-                  Tu copiloto de decisión<br/>en medicina estética
-                </div>
+                <div className="section-title">Tu copiloto de decisión<br/>en medicina estética</div>
                 <div className="section-desc">
-                  No un marketplace. No un chatbot. Un árbitro racional en un mercado emocional 
+                  No un marketplace. No un chatbot. Un árbitro racional en un mercado emocional
                   que te dice lo que nadie más te va a decir — incluyendo si NO deberías hacerte ese tratamiento.
                 </div>
               </FadeIn>
@@ -794,15 +904,12 @@ export default function CopilotoLanding() {
                   ].map((f, i) => (
                     <li key={i} className="solution-feature">
                       <div style={{flexShrink:0,marginTop:2}}><IconCheck/></div>
-                      <div className="solution-feature-text">
-                        <strong>{f.title}.</strong> {f.desc}
-                      </div>
+                      <div className="solution-feature-text"><strong>{f.title}.</strong> {f.desc}</div>
                     </li>
                   ))}
                 </ul>
               </FadeIn>
             </div>
-
             <FadeIn delay={0.2}>
               <div className="solution-visual">
                 <div className="solution-mockup">
@@ -812,9 +919,7 @@ export default function CopilotoLanding() {
                     <div className="mockup-dot" style={{background:"#02C39A"}}/>
                     <span style={{fontSize:13,color:"#8BA3B8",fontWeight:500}}>Copiloto Estético</span>
                   </div>
-                  <div style={{fontSize:11,color:"#5A7A8A",textTransform:"uppercase",letterSpacing:2,marginBottom:16}}>
-                    Resultado de tu análisis
-                  </div>
+                  <div style={{fontSize:11,color:"#5A7A8A",textTransform:"uppercase",letterSpacing:2,marginBottom:16}}>Resultado de tu análisis</div>
                   <div className="mockup-scores">
                     <div className="mockup-score">
                       <div className="mockup-score-val" style={{color:"#02C39A"}}>72</div>
@@ -840,23 +945,20 @@ export default function CopilotoLanding() {
         </div>
       </section>
 
-      {/* ─── HOW IT WORKS ──────────────────────────────── */}
+      {/* HOW IT WORKS */}
       <section className="how" id="como">
         <div className="section">
           <FadeIn>
             <div style={{textAlign:"center"}}>
               <div className="section-label">Cómo funciona</div>
-              <div className="section-title">
-                4 pasos hacia una decisión<br/>que no vas a lamentar
-              </div>
+              <div className="section-title">4 pasos hacia una decisión<br/>que no vas a lamentar</div>
             </div>
           </FadeIn>
-
           <div className="steps">
             {[
               { num: "1", title: "Cuéntanos sobre ti", desc: "Tu perfil de salud, historial estético y contexto personal." },
               { num: "2", title: "Define tu interés", desc: "¿Qué procedimiento consideras y cuál es tu motivación principal?" },
-              { num: "3", title: "Diagnóstico inteligente", desc: "Nuestro motor de IA cruza tu perfil con evidencia clínica real y detecta señales de alerta." },
+              { num: "3", title: "Análisis inteligente", desc: "Nuestro motor cruza tu perfil con evidencia clínica real y detecta señales de alerta." },
               { num: "4", title: "La verdad sobre tu decisión", desc: "Recibes un diagnóstico honesto: nivel de riesgo, necesidad real, y lo que nadie más te diría." },
             ].map((s, i) => (
               <FadeIn key={i} delay={i * 0.1}>
@@ -871,47 +973,40 @@ export default function CopilotoLanding() {
         </div>
       </section>
 
-      {/* ─── DEMO CTA ──────────────────────────────────── */}
+      {/* DEMO CTA */}
       <section className="demo-section" id="demo">
         <div className="section">
           <FadeIn>
             <div className="demo-card">
               <div style={{fontSize:48,marginBottom:16}}>🧭</div>
-              <div className="section-title" style={{marginBottom:12}}>
-                ¿Estás a punto de tomar una mala decisión?
-              </div>
+              <div className="section-title" style={{marginBottom:12}}>¿Estás a punto de tomar una mala decisión?</div>
               <p style={{fontSize:17,color:"#8BA3B8",lineHeight:1.7,maxWidth:500,margin:"0 auto 32px",fontWeight:300}}>
-                Descúbrelo en menos de 2 minutos. Responde unas preguntas y recibe 
-                un diagnóstico personalizado de tu decisión estética — con riesgos reales, 
+                Descúbrelo en menos de 8 minutos. Responde 20 preguntas y recibe
+                un diagnóstico personalizado de tu decisión estética — con riesgos reales,
                 no promesas vacías.
               </p>
               <button className="demo-btn" onClick={() => setDemoOpen(true)}>
                 Evaluar si este tratamiento es para mí
               </button>
-              <p style={{fontSize:12,color:"#4A6A7A",marginTop:16}}>
-                Sin registro. Sin costo. Resultados inmediatos.
-              </p>
+              <p style={{fontSize:12,color:"#4A6A7A",marginTop:16}}>Sin registro. Sin costo. Resultados inmediatos.</p>
             </div>
           </FadeIn>
         </div>
       </section>
 
-      {/* ─── VALIDATION ────────────────────────────────── */}
+      {/* VALIDATION */}
       <section className="validation" id="validacion">
         <div className="section">
           <FadeIn>
             <div style={{textAlign:"center"}}>
               <div className="section-label">Validación con usuarios reales</div>
-              <div className="section-title">
-                Validado con usuarios reales
-              </div>
+              <div className="section-title">Validado con usuarios reales</div>
               <div className="section-desc" style={{maxWidth:600,margin:"0 auto 0"}}>
-                No son proyecciones. Son respuestas reales de personas que están considerando 
+                No son proyecciones. Son respuestas reales de personas que están considerando
                 procedimientos estéticos ahora mismo.
               </div>
             </div>
           </FadeIn>
-
           <div className="val-grid">
             {[
               { num: "96%", label: "usaría la herramienta antes de decidir un tratamiento" },
@@ -927,18 +1022,19 @@ export default function CopilotoLanding() {
               </FadeIn>
             ))}
           </div>
-
           <FadeIn delay={0.3}>
             <div className="val-caption">
-              "El 89% dice que entender riesgos es muy importante. Pero hoy, casi toda la información 
-              disponible viene de quien te vende el tratamiento. Esa contradicción es exactamente 
+              "El 89% dice que entender riesgos es muy importante. Pero hoy, casi toda la información
+              disponible viene de quien te vende el tratamiento. Esa contradicción es exactamente
               el problema que resolvemos."
+              <br/><br/>
+              <span style={{fontSize:12,fontStyle:"normal"}}>Fuente: Encuesta propia abril 2026 · 91 respuestas · Mujeres Colombia</span>
             </div>
           </FadeIn>
         </div>
       </section>
 
-      {/* ─── CREDIBILITY ───────────────────────────────── */}
+      {/* CREDIBILITY */}
       <section className="credibility">
         <div className="section">
           <FadeIn>
@@ -949,9 +1045,9 @@ export default function CopilotoLanding() {
                   Construido por alguien que ha visto<br/>miles de decisiones estéticas
                 </div>
                 <p style={{fontSize:15,color:"#8BA3B8",lineHeight:1.7}}>
-                  El Copiloto Estético  nace de la observación directa de miles de decisiones 
-                  durante más de una década, de cómo se toman — y a veces se arrepienten — 
-                  decisiones estéticas en la vida real. El Copiloto Estético existe para mover 
+                  Esta herramienta no nace de un laboratorio. Nace de la observación directa,
+                  durante más de una década, de cómo se toman — y a veces se arrepienten —
+                  decisiones estéticas en la vida real. El Copiloto Estético existe para mover
                   esa observación de la intuición de pocos al beneficio de muchos.
                 </p>
               </div>
@@ -961,6 +1057,10 @@ export default function CopilotoLanding() {
                   <div className="cred-stat-label">Años en el sector</div>
                 </div>
                 <div className="cred-stat">
+                  <div className="cred-stat-num">4</div>
+                  <div className="cred-stat-label">Disciplinas académicas</div>
+                </div>
+                <div className="cred-stat">
                   <div className="cred-stat-num">0</div>
                   <div className="cred-stat-label">Comisiones de clínicas</div>
                 </div>
@@ -968,17 +1068,13 @@ export default function CopilotoLanding() {
                   <div className="cred-stat-num">1</div>
                   <div className="cred-stat-label">Propósito: decidir bien</div>
                 </div>
-                <div className="cred-stat">
-                  <div className="cred-stat-num">4</div>
-                  <div className="cred-stat-label">Disciplinas académicas</div>
-                </div>
               </div>
             </div>
           </FadeIn>
         </div>
       </section>
 
-      {/* ─── CTA FINAL ─────────────────────────────────── */}
+      {/* CTA FINAL */}
       <section className="cta-final" id="acceso">
         <div className="section" style={{position:"relative",zIndex:2}}>
           <FadeIn>
@@ -988,8 +1084,8 @@ export default function CopilotoLanding() {
               <em style={{fontFamily:"'Playfair Display',serif",color:"#02C39A",fontStyle:"italic"}}>evalúa tu decisión con claridad</em>
             </div>
             <div className="section-desc">
-              Estamos construyendo la herramienta que todavía no existe en la industria estética. 
-              Si crees que mereces tomar decisiones informadas sobre tu propio cuerpo, 
+              Estamos construyendo la herramienta que todavía no existe en la industria estética.
+              Si crees que mereces tomar decisiones informadas sobre tu propio cuerpo,
               únete ahora.
             </div>
           </FadeIn>
@@ -997,17 +1093,9 @@ export default function CopilotoLanding() {
             {!submitted ? (
               <div style={{display:"flex",justifyContent:"center"}}>
                 <div className="hero-input-wrap">
-                  <input
-                    className="hero-input"
-                    type="email"
-                    placeholder="Tu correo electrónico"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                  />
-                  <button className="hero-btn" onClick={handleSubmit}>
-                    Quiero proteger mi decisión
-                  </button>
+                  <input className="hero-input" type="email" placeholder="Tu correo electrónico" value={email}
+                    onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSubmit()} />
+                  <button className="hero-btn" onClick={handleSubmit}>Quiero proteger mi decisión</button>
                 </div>
               </div>
             ) : (
@@ -1017,29 +1105,25 @@ export default function CopilotoLanding() {
             )}
           </FadeIn>
           <FadeIn delay={0.25}>
-            <p style={{fontSize:12,color:"#4A6A7A",marginTop:16}}>
-              Sin spam. Sin compromisos. Solo acceso prioritario cuando lancemos.
-            </p>
+            <p style={{fontSize:12,color:"#4A6A7A",marginTop:16}}>Sin spam. Sin compromisos. Solo acceso prioritario cuando lancemos.</p>
           </FadeIn>
         </div>
       </section>
 
-      {/* ─── FOOTER ────────────────────────────────────── */}
+      {/* FOOTER */}
       <footer className="footer">
         <div className="section">
           <div className="footer-inner">
             <div>
               <a href="#" className="nav-logo" style={{fontSize:18}}>Copiloto<span> Estético</span></a>
-              <div className="footer-text" style={{marginTop:8}}>
-                Democratizando el análisis de las decisiones.
-              </div>
+              <div className="footer-text" style={{marginTop:8}}>Democratizando el análisis de las decisiones.</div>
             </div>
             <div style={{textAlign:"right"}}>
               <div className="footer-text">
                 Un proyecto con el acompañamiento y la asesoría de <a href="https://promoestetica.com" style={{color:"#02C39A",textDecoration:"none"}} target="_blank" rel="noopener">Promoestética</a>
               </div>
               <div className="footer-text" style={{marginTop:4}}>
-                © {new Date().getFullYear()} Copiloto Estético . Bogotá, Colombia.
+                © {new Date().getFullYear()} Copiloto Estético. Bogotá, Colombia.
               </div>
             </div>
           </div>
