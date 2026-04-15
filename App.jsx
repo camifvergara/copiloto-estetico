@@ -564,7 +564,7 @@ function QuestionRenderer({ question, value, allAnswers, onAnswer, onBack, Btn, 
       )}
 
       {/* TEXT SHORT */}
-      {question.type === 'text_short' && (
+      {(question.type === 'text_short' || question.type === 'text') && (
         <div style={{ marginBottom: 24 }}>
           <textarea
             value={localValue}
