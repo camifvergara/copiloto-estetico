@@ -287,7 +287,7 @@ function DemoModal({ isOpen, onClose }) {
             value={answers[currentQ.id]}
             allAnswers={answers}
             onAnswer={handleAnswer}
-            onBack={currentIdx > 0 ? handleBack : null}
+            onBack={currentIdx > 0 ? handleBack : null} currentIdx={currentIdx} totalQuestions={visibleQs.length}
             Btn={Btn}
           />
         )}
@@ -439,7 +439,7 @@ function DemoModal({ isOpen, onClose }) {
 }
 
 // ─── Question Renderer ──────────────────────────────────────
-function QuestionRenderer({ question, value, allAnswers, onAnswer, onBack, Btn }) {
+function QuestionRenderer({ question, value, allAnswers, onAnswer, onBack, Btn, currentIdx, totalQuestions }) {
   const [localValue, setLocalValue] = useState(value || (question.type === 'multi_select' ? [] : ''));
   const [numericInput, setNumericInput] = useState(value || '');
 
@@ -606,7 +606,7 @@ function QuestionRenderer({ question, value, allAnswers, onAnswer, onBack, Btn }
         <div style={{ display: "flex", justifyContent: onBack ? "space-between" : "flex-end" }}>
           {onBack && <Btn secondary onClick={onBack}>Atrás</Btn>}
           <Btn onClick={handleSubmit} disabled={!canSubmit()}>
-            {currentIdx >= visibleQs.length - 1 ? "Ver mi análisis" : "Siguiente"}
+            {currentIdx >= totalQuestions - 1 ? "Ver mi análisis" : "Siguiente"}
           </Btn>
         </div>
       )}
