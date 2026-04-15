@@ -227,7 +227,7 @@ function DemoModal({ isOpen, onClose }) {
           <div style={{ marginBottom: 28 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
               <span style={{ fontSize: 11, color: "#5A7A8A", textTransform: "uppercase", letterSpacing: 2 }}>
-                Copiloto Estético 360°
+                Copiloto Estético 
               </span>
               <span style={{ fontSize: 11, color: "#5A7A8A" }}>Paso {step + 1} de 4</span>
             </div>
@@ -252,7 +252,7 @@ function DemoModal({ isOpen, onClose }) {
               <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                 <span style={{ color: "#02C39A", fontSize: 16 }}>ℹ️</span>
                 <p style={{ fontSize: 13, color: "#8BA3B8", lineHeight: 1.6, margin: 0 }}>
-                  Este es un <strong style={{ color: "#02C39A" }}>diagnóstico de decisión</strong> del Copiloto Estético 360°. 
+                  Este es un <strong style={{ color: "#02C39A" }}>diagnóstico de decisión</strong> del Copiloto Estético . 
                   Los resultados son orientativos y no reemplazan el consejo de un profesional médico.
                 </p>
               </div>
@@ -462,7 +462,7 @@ function DemoModal({ isOpen, onClose }) {
 
             {/* Disclaimer */}
             <p style={{ fontSize: 11, color: "#4A6A7A", textAlign: "center", lineHeight: 1.6, marginBottom: 20 }}>
-              Este diagnóstico es orientativo. La versión completa del Copiloto Estético 360° 
+              Este diagnóstico es orientativo. La versión completa del Copiloto Estético  
               utiliza modelos avanzados de IA entrenados con datos clínicos reales para un análisis más profundo.
             </p>
 
@@ -655,7 +655,7 @@ export default function CopilotoLanding() {
       {/* ─── NAV ───────────────────────────────────────── */}
       <nav className={`nav ${scrolled ? "nav-scrolled" : ""}`}>
         <div className="nav-inner">
-          <a href="#" className="nav-logo">Copiloto<span>360°</span></a>
+          <a href="#" className="nav-logo">Copiloto<span> Estético</span></a>
           <div className="nav-links">
             <a href="#problema" className="nav-link">El problema</a>
             <a href="#solucion" className="nav-link">La solución</a>
@@ -698,8 +698,8 @@ export default function CopilotoLanding() {
           <FadeIn delay={0.2}>
             <p className="hero-sub">
               La mayoría de personas toma decisiones estéticas sin entender los riesgos, 
-              las alternativas ni las consecuencias. Copiloto Estético 360° es la primera herramienta 
-              de IA que analiza si un procedimiento realmente tiene sentido para ti — antes de que sea tarde.
+              las alternativas ni las consecuencias. El Copiloto Estético es la primera herramienta 
+              de análisis que te ayuda a entender si un procedimiento realmente tiene sentido para ti — antes de que sea tarde.
             </p>
           </FadeIn>
           <FadeIn delay={0.3}>
@@ -715,16 +715,16 @@ export default function CopilotoLanding() {
           <FadeIn delay={0.4}>
             <div className="hero-stats">
               <div>
-                <div className="hero-stat-num">11</div>
-                <div className="hero-stat-label">Años de investigación</div>
+                <div className="hero-stat-num">+15</div>
+                <div className="hero-stat-label">Años en el sector</div>
               </div>
               <div>
-                <div className="hero-stat-num">300K+</div>
-                <div className="hero-stat-label">Citas analizadas</div>
-              </div>
-              <div>
-                <div className="hero-stat-num">95%</div>
+                <div className="hero-stat-num">96%</div>
                 <div className="hero-stat-label">Quiere esta herramienta</div>
+              </div>
+              <div>
+                <div className="hero-stat-num">89%</div>
+                <div className="hero-stat-label">Considera vital entender riesgos</div>
               </div>
             </div>
           </FadeIn>
@@ -810,7 +810,7 @@ export default function CopilotoLanding() {
                   <div className="mockup-glow" style={{bottom:"-40px",left:"-40px",background:"#02C39A"}}/>
                   <div className="mockup-header">
                     <div className="mockup-dot" style={{background:"#02C39A"}}/>
-                    <span style={{fontSize:13,color:"#8BA3B8",fontWeight:500}}>Copiloto Estético 360°</span>
+                    <span style={{fontSize:13,color:"#8BA3B8",fontWeight:500}}>Copiloto Estético</span>
                   </div>
                   <div style={{fontSize:11,color:"#5A7A8A",textTransform:"uppercase",letterSpacing:2,marginBottom:16}}>
                     Resultado de tu análisis
@@ -914,10 +914,10 @@ export default function CopilotoLanding() {
 
           <div className="val-grid">
             {[
-              { num: "95%", label: "usaría la herramienta antes de decidir un tratamiento" },
-              { num: "97%", label: "dejó su email — quieren esto antes de que exista" },
+              { num: "96%", label: "usaría la herramienta antes de decidir un tratamiento" },
+              { num: "89%", label: "considera muy importante entender riesgos antes de decidir" },
               { num: "68%", label: "dedicaría 1 hora o más a analizar su decisión" },
-              { num: "89%", label: "dice que entender riesgos es MUY importante" },
+              { num: "85%", label: "está considerando un tratamiento estético actualmente" },
             ].map((v, i) => (
               <FadeIn key={i} delay={i * 0.08}>
                 <div className="val-card">
@@ -930,7 +930,7 @@ export default function CopilotoLanding() {
 
           <FadeIn delay={0.3}>
             <div className="val-caption">
-              "El 89% dice que entender riesgos es muy importante. Pero hoy, el 100% de la información 
+              "El 89% dice que entender riesgos es muy importante. Pero hoy, casi toda la información 
               disponible viene de quien te vende el tratamiento. Esa contradicción es exactamente 
               el problema que resolvemos."
             </div>
@@ -944,29 +944,29 @@ export default function CopilotoLanding() {
           <FadeIn>
             <div className="cred-card">
               <div>
-                <div className="section-label" style={{marginBottom:16}}>Respaldado por</div>
+                <div className="section-label" style={{marginBottom:16}}>Quién está detrás</div>
                 <div className="section-title" style={{fontSize:"clamp(24px,3vw,34px)",marginBottom:16}}>
-                  11 años de experiencia<br/>con Promoestética
+                  Construido por alguien que ha visto<br/>miles de decisiones estéticas
                 </div>
                 <p style={{fontSize:15,color:"#8BA3B8",lineHeight:1.7}}>
-                  El Copiloto Estético 360° nace de la observación directa de miles de decisiones 
-                  estéticas a través de Promoestética, una de las plataformas de medicina estética 
-                  más reconocidas de Colombia. No es una idea de laboratorio — es la respuesta a 
-                  un problema que vimos de primera mano durante más de una década.
+                  El Copiloto Estético  nace de la observación directa de miles de decisiones 
+                  durante más de una década, de cómo se toman — y a veces se arrepienten — 
+                  decisiones estéticas en la vida real. El Copiloto Estético existe para mover 
+                  esa observación de la intuición de pocos al beneficio de muchos.
                 </p>
               </div>
               <div className="cred-stats">
                 <div className="cred-stat">
-                  <div className="cred-stat-num">300K+</div>
-                  <div className="cred-stat-label">Citas atendidas</div>
+                  <div className="cred-stat-num">+15</div>
+                  <div className="cred-stat-label">Años en el sector</div>
                 </div>
                 <div className="cred-stat">
-                  <div className="cred-stat-num">28K</div>
-                  <div className="cred-stat-label">Seguidores</div>
+                  <div className="cred-stat-num">0</div>
+                  <div className="cred-stat-label">Comisiones de clínicas</div>
                 </div>
                 <div className="cred-stat">
-                  <div className="cred-stat-num">11</div>
-                  <div className="cred-stat-label">Años</div>
+                  <div className="cred-stat-num">1</div>
+                  <div className="cred-stat-label">Propósito: decidir bien</div>
                 </div>
                 <div className="cred-stat">
                   <div className="cred-stat-num">4</div>
@@ -1029,17 +1029,17 @@ export default function CopilotoLanding() {
         <div className="section">
           <div className="footer-inner">
             <div>
-              <a href="#" className="nav-logo" style={{fontSize:18}}>Copiloto<span>360°</span></a>
+              <a href="#" className="nav-logo" style={{fontSize:18}}>Copiloto<span> Estético</span></a>
               <div className="footer-text" style={{marginTop:8}}>
                 Democratizando el análisis de las decisiones.
               </div>
             </div>
             <div style={{textAlign:"right"}}>
               <div className="footer-text">
-                Un proyecto de <a href="https://promoestetica.com" style={{color:"#02C39A",textDecoration:"none"}} target="_blank" rel="noopener">Promoestética</a>
+                Un proyecto con el acompañamiento y la asesoría de <a href="https://promoestetica.com" style={{color:"#02C39A",textDecoration:"none"}} target="_blank" rel="noopener">Promoestética</a>
               </div>
               <div className="footer-text" style={{marginTop:4}}>
-                © {new Date().getFullYear()} Copiloto Estético 360°. Bogotá, Colombia.
+                © {new Date().getFullYear()} Copiloto Estético . Bogotá, Colombia.
               </div>
             </div>
           </div>
