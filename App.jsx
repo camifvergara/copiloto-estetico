@@ -488,7 +488,7 @@ function QuestionRenderer({ question, value, allAnswers, onAnswer, onBack, Btn, 
 
   const getOptions = () => {
     let opts = question.options || (question.dynamicOptions && question.dynamicOptions(allAnswers)); if (!opts) return [];
-    return question.options.map(o => typeof o === 'string' ? { value: o, label: o } : o);
+    return opts.map(o => typeof o === 'string' ? { value: o, label: o } : o);
   };
 
   return (
@@ -564,7 +564,7 @@ function QuestionRenderer({ question, value, allAnswers, onAnswer, onBack, Btn, 
       )}
 
       {/* TEXT SHORT */}
-      {((question.type === 'text_short' || question.type === 'text') || question.type === 'text') && (
+      {(((question.type === 'text_short' || question.type === 'text') || question.type === 'text') || question.type === 'text') && (
         <div style={{ marginBottom: 24 }}>
           <textarea
             value={localValue}
